@@ -1350,34 +1350,6 @@ static void parse_conn_table(struct jaylink_connection *conns,
 	}
 }
 
-static bool _inet_pton(const char *str, struct in_addr *in)
-{
-#ifdef _WIN32
-	int ret;
-	struct sockaddr_in sock_in;
-	int length;
-
-	length = sizeof(sock_in);
-
-	/*
-	 * Use WSAStringToAddress() instead of inet_pton() because the latter
-	 * requires at least Windows Vista.
-	 */
-	ret = WSAStringToAddress((LPTSTR)str, AF_INET, NULL,
-		(LPSOCKADDR)&sock_in, &length);
-
-	if (ret != 0)
-		return false;
-
-	*in = sock_in.sin_addr;
-#else
-	if (inet_pton(AF_INET, str, in) != 1)
-		return false;
-#endif
-
-	return true;
-}
-
 /**
  * Register a connection on a device.
  *
@@ -1482,7 +1454,7 @@ JAYLINK_API int jaylink_register(struct jaylink_device_handle *devh,
 	buf[1] = REG_CMD_REGISTER;
 	buffer_set_u32(buf, connection->pid, 2);
 
-	if (!_inet_pton(connection->hid, &in))
+	if (!socket_inet_pton(connection->hid, &in))
 		return JAYLINK_ERR_ARG;
 
 	buffer_set_u32(buf, in.s_addr, 6);
@@ -1622,7 +1594,7 @@ JAYLINK_API int jaylink_unregister(struct jaylink_device_handle *devh,
 	buf[1] = REG_CMD_UNREGISTER;
 	buffer_set_u32(buf, connection->pid, 2);
 
-	if (!_inet_pton(connection->hid, &in))
+	if (!socket_inet_pton(connection->hid, &in))
 		return JAYLINK_ERR_ARG;
 
 	buffer_set_u32(buf, in.s_addr, 6);

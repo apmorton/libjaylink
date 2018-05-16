@@ -482,6 +482,8 @@ JAYLINK_API int jaylink_unregister(struct jaylink_device_handle *devh,
 
 JAYLINK_API int jaylink_discovery_scan(struct jaylink_context *ctx,
 		uint32_t ifaces);
+JAYLINK_API int jaylink_discovery_probe(struct jaylink_context *ctx,
+		const char *addr);
 
 /*--- emucom.c --------------------------------------------------------------*/
 

@@ -255,3 +255,31 @@ JAYLINK_PRIV bool socket_set_option(int sock, int level, int option,
 
 	return false;
 }
+
+JAYLINK_PRIV bool socket_inet_pton(const char *str, struct in_addr *in)
+{
+#ifdef _WIN32
+	int ret;
+	struct sockaddr_in sock_in;
+	int length;
+
+	length = sizeof(sock_in);
+
+	/*
+	 * Use WSAStringToAddress() instead of inet_pton() because the latter
+	 * requires at least Windows Vista.
+	 */
+	ret = WSAStringToAddress((LPTSTR)str, AF_INET, NULL,
+		(LPSOCKADDR)&sock_in, &length);
+
+	if (ret != 0)
+		return false;
+
+	*in = sock_in.sin_addr;
+#else
+	if (inet_pton(AF_INET, str, in) != 1)
+		return false;
+#endif
+
+	return true;
+}

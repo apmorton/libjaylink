@@ -347,3 +347,108 @@ JAYLINK_PRIV int discovery_tcp_scan(struct jaylink_context *ctx)
 
 	return JAYLINK_OK;
 }
+
+JAYLINK_API int jaylink_discovery_probe(struct jaylink_context *ctx, const char *ipaddr)
+{
+	int ret;
+	int sock;
+	fd_set rfds;
+	struct sockaddr_in addr;
+	size_t addr_length;
+	struct timeval timeout;
+	uint8_t buf[ADV_MESSAGE_SIZE];
+	struct jaylink_device *dev;
+	size_t length;
+	size_t num_devs;
+
+	sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+
+	if (sock < 0) {
+		log_err(ctx, "Failed to create discovery socket.");
+		return JAYLINK_ERR;
+	}
+
+	addr.sin_family = AF_INET;
+	addr.sin_port = htons(DISC_PORT);
+
+	if (!socket_inet_pton(ipaddr, &addr.sin_addr)) {
+		log_err(ctx, "Failed to parse discovery probe address.");
+		socket_close(sock);
+		return JAYLINK_ERR;
+	}
+
+	memset(buf, 0, DISC_MESSAGE_SIZE);
+	memcpy(buf, "Discover", 8);
+
+	log_dbg(ctx, "Sending discovery message.");
+
+	length = DISC_MESSAGE_SIZE;
+
+	if (!socket_sendto(sock, (char *)buf, &length, 0,
+			(const struct sockaddr *)&addr, sizeof(addr))) {
+		log_err(ctx, "Failed to send discovery message.");
+		socket_close(sock);
+		return JAYLINK_ERR_IO;
+	}
+
+	if (length < DISC_MESSAGE_SIZE) {
+		log_err(ctx, "Only sent %zu bytes of discovery message.",
+			length);
+		socket_close(sock);
+		return JAYLINK_ERR_IO;
+	}
+
+	timeout.tv_sec = DISC_TIMEOUT / 1000;
+	timeout.tv_usec = (DISC_TIMEOUT % 1000) * 1000;
+
+	num_devs = 0;
+
+	while (true) {
+		FD_ZERO(&rfds);
+		FD_SET(sock, &rfds);
+
+		ret = select(sock + 1, &rfds, NULL, NULL, &timeout);
+
+		if (ret <= 0)
+			break;
+
+		if (!FD_ISSET(sock, &rfds))
+			continue;
+
+		length = ADV_MESSAGE_SIZE;
+		addr_length = sizeof(struct sockaddr_in);
+
+		if (!socket_recvfrom(sock, buf, &length, 0,
+				(struct sockaddr *)&addr, &addr_length)) {
+			log_warn(ctx, "Failed to receive advertisement "
+				"message.");
+			continue;
+		}
+
+		/*
+		 * Filter out messages with an invalid size. This includes the
+		 * broadcast message we sent before.
+		 */
+		if (length != ADV_MESSAGE_SIZE)
+			continue;
+
+		dev = probe_device(ctx, &addr, buf);
+
+		if (dev) {
+			ctx->discovered_devs = list_prepend(
+				ctx->discovered_devs, dev);
+			num_devs++;
+		}
+	}
+
+	socket_close(sock);
+
+	if (ret < 0) {
+		log_err(ctx, "select() failed.");
+		return JAYLINK_ERR;
+	}
+
+	log_dbg(ctx, "Found %zu TCP/IP device(s).", num_devs);
+
+	return JAYLINK_OK;
+}
